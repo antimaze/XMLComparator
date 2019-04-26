@@ -302,6 +302,7 @@ public class StrictComparator implements Comparator
 			if(targetNode.getAttributeByName(sourceNode.getAttributeByIndex(i).getKey()) == null)
 			{
 				IDiff attrDiff = new XMLAttributeDifference(sourceNode, targetNode, sourceNode.getAttributeByIndex(i), 
+															targetNode.getAttributeByIndex(i),
 															ATTRIBUTE_DIFF_TYPE.Attribute_Missing);
 				xmlDiff.addXMLDiff(targetNode.getUniqueId(), attrDiff);
 				hasDifferences = true;
@@ -314,7 +315,8 @@ public class StrictComparator implements Comparator
 		{
 			if(sourceNode.getAttributeByName(targetNode.getAttributeByIndex(i).getKey()) == null)
 			{
-				IDiff attrDiff = new XMLAttributeDifference(sourceNode, targetNode, targetNode.getAttributeByIndex(i), 
+				IDiff attrDiff = new XMLAttributeDifference(sourceNode, targetNode, targetNode.getAttributeByIndex(i),
+															targetNode.getAttributeByIndex(i),
 															ATTRIBUTE_DIFF_TYPE.Attribute_Extra);
 				xmlDiff.addXMLDiff(targetNode.getUniqueId(), attrDiff);
 				hasDifferences = true;
@@ -334,6 +336,7 @@ public class StrictComparator implements Comparator
 				if(!value1.toString().equals(value2.toString()))
 				{
 					IDiff attrDiff = new XMLAttributeDifference(sourceNode, targetNode, sourceNode.getAttributeByIndex(i), 
+																targetNode.getAttributeByIndex(i),
 																ATTRIBUTE_DIFF_TYPE.Attribute_Value_Mismatch);
 					xmlDiff.addXMLDiff(targetNode.getUniqueId(), attrDiff);
 					hasDifferences = true;

@@ -1,18 +1,16 @@
 package org.xml.xmlparser;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.util.HashMap;
-import java.util.Stack;
 
 import org.xml.xmlmodel.XMLDocument;
+import org.xml.xmlmodel.XMLElement;
 import org.xml.xmlmodel.XMLElement.XMLElementType;
 import org.xml.xmlmodel.XMLNode;
 import org.xml.xmlmodel.XMLNodeFactory;
+import org.xml.xmlmodel.XMLSimpleDeclaration;
 import org.xml.xmlmodel.XMLValue;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.xml.xmlmodel.DOCTYPE;
 import org.xml.xmlmodel.XMLAttribute;
 import org.xml.xmlmodel.XMLCData;
 import org.xml.xmlmodel.XMLComment;
@@ -20,11 +18,6 @@ import org.xml.xmlmodel.XMLDeclaration;
 
 public abstract class BaseParser
 {
-	/**
-     * Log instance.
-     */
-    private static final Log LOG = LogFactory.getLog(BaseParser.class);
-    
 	protected XMLDocument document;
 	private ContinuousSource sourceFile;
 	
@@ -70,6 +63,12 @@ public abstract class BaseParser
     protected static final int A					= 'A';
     protected static final int T					= 'T';
     
+    protected static final int O					= 'O';
+    protected static final int Y					= 'Y';
+    protected static final int P					= 'P';
+    protected static final int E					= 'E';
+    
+    
 	protected boolean isNodeNameFound = false;
 	protected boolean isAttributeValueInProgress = false;
 	protected boolean shouldExpectNodeName = false;
@@ -81,9 +80,6 @@ public abstract class BaseParser
 	
 	protected boolean shouldExpectXMLDeclaration = true;
 	protected boolean shouldExpectRootNode = true;
-	
-	private Stack<XMLNode> tagStack = new Stack<XMLNode>();
-	private Stack<Integer> tagIndexStack = new Stack<Integer>();
 	
 	private static String XML_VERSION = "1.0";
 	private static HashMap<String, Integer> ENCODING_VALUE_MAP;
@@ -135,9 +131,14 @@ public abstract class BaseParser
 	{
 		readBeforeRootNode();
 		
-		XMLNode rootNode = readRootNode();
-		rootNode.setParentNode(null);
-		document.setRootNode(rootNode);
+		XMLElement rootNode = readRootNode();
+		if(rootNode instanceof XMLNode)
+		{
+			((XMLNode)rootNode).setNodeSequentialIndex(1);
+			((XMLNode)rootNode).setParentNode(null);
+			document.setRootNode((XMLNode)rootNode);			
+		}
+
 		
 //		else
 //		{
@@ -147,14 +148,353 @@ public abstract class BaseParser
 	
 	private void readBeforeRootNode() throws Exception
 	{
+		XMLElementType elementType;
+		XMLElement element = null;
+		int elementIndex = 1;
+		while(!sourceFile.isEOF())
+		{
+			elementType = checkNextElementType();
+			if(elementType == XMLElementType.XML_CDATA)
+			{
+				throw new Exception("Error : No budy,,, this CDATA,,, you can't put it here,,, just grab that CDATA and get out...");
+			}
+			else if(elementType == XMLElementType.XMLDeclaration)
+			{
+				if(!shouldExpectXMLDeclaration)
+				{
+					throw new Exception("Error : I guess this is xml declaration came at the wrong place or this could be second xml declaration that is also wrong...");
+				}
+				else
+				{
+					shouldExpectXMLDeclaration = false;
+				}
+			}
+			else if(elementType == XMLElementType.XMLComment)
+			{
+				shouldExpectXMLDeclaration = false;
+			}
+			else if(elementType == XMLElementType.None || elementType == XMLElementType.XMLNode)
+			{
+				break;
+			}
+			
+			element = readElement(elementType);
+			document.addElement(elementIndex++, element);
+		}
+	}
+	
+	private XMLElementType checkNextElementType() throws IOException, Exception
+	{
+		if(hasComment())
+		{
+			return XMLElementType.XMLComment;
+		}
+		else if(hasXMLCDATA())
+		{
+			return XMLElementType.XML_CDATA;
+		}
+		else if(hasXMLDeclaration())
+		{
+			return XMLElementType.XMLDeclaration;
+		}
+		else if(hasSimpleDeclaration())
+		{
+			return XMLElementType.XMLSimpleDeclaration;
+		}
+		else if(hasNodeValue())
+		{
+			return XMLElementType.XMLValue;
+		}
+		else if(hasNestedNodes())
+		{
+			return XMLElementType.XMLNode;
+		}
+		else if(hasDOCTYPE())
+		{
+			return XMLElementType.DOCTYPE;
+		}
+		else
+		{
+			return XMLElementType.None;
+		}
+	}
+	
+	/**
+	 * Checks whether next element is comment or not...
+	 * @return boolean that indicates whether the next readable element is comment or not...
+	 * @throws Exception
+	 */
+	private boolean hasComment() throws Exception
+	{
+		int spaces = skipSpaces();
+		
+		if(sourceFile.isEOF() || sourceFile.available() < 4)
+		{
+			sourceFile.unread((byte)spaces);
+			return false;
+		}
+		
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		char c3 = (char)sourceFile.read();
+		char c4 = (char)sourceFile.read();
+		
+		sourceFile.unread((byte)(4 + spaces));
+		if(c1 == START_TAG && c2 == EXCLAMATION_MARK && c3 == DASH && c4 == DASH)
+		{
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Checks whether the next element is CDATA or not...
+	 * 
+	 * @return boolean indicates whether the next readable element is CDATA or not...
+	 * @throws IOException
+	 */
+	private boolean hasXMLCDATA() throws IOException
+	{
+		int spaces = skipSpaces();
+		
+		if(sourceFile.isEOF() || sourceFile.available() < 9)
+		{
+			sourceFile.unread((byte)spaces);
+			return false;
+		}
+		
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		char c3 = (char)sourceFile.read();
+		char c4 = (char)sourceFile.read();
+		char c5 = (char)sourceFile.read();
+		char c6 = (char)sourceFile.read();
+		char c7 = (char)sourceFile.read();
+		char c8 = (char)sourceFile.read();
+		char c9 = (char)sourceFile.read();
+		
+		sourceFile.unread((byte)(9 + spaces));
+		if(c1 == START_TAG && c2 == EXCLAMATION_MARK && c3 == OPEN_SQUARE_BRACKET && c4 == C && c5 == D && 
+				c6 == A && c7 == T && c8 == A && c9 == OPEN_SQUARE_BRACKET)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Checks whether the next element is XMLDeclaration or not...
+	 * 
+	 * @return boolean indicates whether the next readable element is XMLDeclaration or not...
+	 * @throws IOException
+	 */
+	private boolean hasXMLDeclaration() throws IOException
+	{
+		if(sourceFile.isEOF() || sourceFile.available() < 5)
+		{
+			return false;
+		}
+
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		char c3 = (char)sourceFile.read();
+		char c4 = (char)sourceFile.read();
+		char c5 = (char)sourceFile.read();
+		char c6 = (char)sourceFile.read();
+
+		sourceFile.unread((byte)6);
+		if(c1 == START_TAG && c2 == QUESTION_MARK && c3 == x && c4 == m && c5 == l && c6 == ASCII_SPACE)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Checks whether the next element is XMLSimpleDeclaration or not...
+	 * 
+	 * @return boolean indicates whether the next readable element is XMLSimpleDeclaration or not...
+	 * @throws IOException
+	 */
+	private boolean hasSimpleDeclaration() throws IOException
+	{
+		int spaces = skipSpaces();
+		if(sourceFile.isEOF() || sourceFile.available() < 5)
+		{
+			sourceFile.unread((byte)spaces);
+			return false;
+		}
+
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		char c3 = (char)sourceFile.read();
+		char c4 = (char)sourceFile.read();
+		char c5 = (char)sourceFile.read();
+		char c6 = (char)sourceFile.read();
+
+		sourceFile.unread((byte)(6 + spaces));
+		if(c1 == START_TAG && c2 == QUESTION_MARK)
+		{
+			if(c3 == x && c4 == m && c5 == l && c6 == ASCII_SPACE)
+			{
+				return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Checks whether the next element is XMLNode or not...
+	 * 
+	 * @return boolean indicates whether the next readable element is XMLNode or not...
+	 * @throws IOException
+	 */
+	private boolean hasNestedNodes() throws Exception
+	{
+		int spaces = skipSpaces();
+		
+		if(sourceFile.isEOF() || sourceFile.available() < 2)
+		{
+			sourceFile.unread((byte)spaces);
+			return false;
+		}
+		
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		
+		sourceFile.unread((byte)(2+spaces));
+		if(c1 == START_TAG)
+		{
+			if(c2 == END_PREFIX)
+			{
+				return false;
+			}
+			else if(c2 == EXCLAMATION_MARK)
+			{
+				return false;
+			}
+			return true;
+		}
+		
+		return false;
+	}
+	
+	private boolean hasDOCTYPE() throws IOException
+	{
+		int spaces = skipSpaces();
+		if(sourceFile.isEOF() || sourceFile.available() < 9)
+		{
+			sourceFile.unread((byte)spaces);
+			return false;
+		}
+		
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		char c3 = (char)sourceFile.read();
+		char c4 = (char)sourceFile.read();
+		char c5 = (char)sourceFile.read();
+		char c6 = (char)sourceFile.read();
+		char c7 = (char)sourceFile.read();
+		char c8 = (char)sourceFile.read();
+		char c9 = (char)sourceFile.read();
+		
+		sourceFile.unread((byte)(9 + spaces));
+		if(c1 == START_TAG && c2 == EXCLAMATION_MARK && c3 == D && c4 == O 
+				&& c5 == C && c6 == T && c7 == Y && c8 == P && c9 == E)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Checks whether the next element is XMLValue or not...
+	 * 
+	 * @return boolean indicates whether the next readable element is XMLValue or not...
+	 * @throws IOException
+	 */
+	public boolean hasNodeValue() throws IOException
+	{
+		int spaces = skipSpaces();
 		char c = (char)sourceFile.read();
 		
-		// If xml declaration is present in the xml file then it must come first...
-		// Nothing come before the first xml declaration...
-		// comment can come after first xml declaration or before any other xml declaration...
-		while(!sourceFile.isEOF() && isWhitespace(c))
+		sourceFile.unread((byte)(1 + spaces));
+		if(c != START_TAG)
 		{
-			shouldExpectXMLDeclaration = false;
+			return true;
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Reads the next element in the file by elementType...
+	 * 
+	 * @param elementType
+	 * @return XMLElement if valid element type is passed...
+	 * @throws Exception
+	 */
+	private XMLElement readElement(XMLElementType elementType) throws Exception
+	{
+		XMLElement element = null;
+		if(elementType == XMLElementType.XMLValue)
+		{
+			element = readNodeValue();
+		}
+		else if(elementType == XMLElementType.XMLComment)
+		{
+			element = readComment();
+		}
+		else if(elementType == XMLElementType.XML_CDATA)
+		{
+			element = readXMLCDATA();
+		}
+		else if(elementType == XMLElementType.XMLDeclaration)
+		{
+			element = readXMLDeclaration();
+			skipSpaces();
+		}
+		else if(elementType == XMLElementType.XMLSimpleDeclaration)
+		{
+			element = readSimpleDeclaration();
+		}
+		else if(elementType == XMLElementType.XMLNode)
+		{
+			element = readNode();
+		}
+		else if(elementType == XMLElementType.DOCTYPE)
+		{
+			element = readDOCTYPE();
+		}
+		
+		return element;
+	}
+	
+	/**
+	 * Reads the node value( text comes in the node )...
+	 * @return XMLElement of type XMLValue...
+	 * @throws Exception
+	 */
+	private XMLElement readNodeValue() throws Exception
+	{
+		StringBuilder  nodeValue = new StringBuilder();
+		
+		int spaces = skipSpaces();
+		char c = (char)sourceFile.read();
+		if(c == START_TAG)
+		{
+			return null;
+		}
+		
+		sourceFile.unread((byte)(1 + spaces));
+		c = (char)sourceFile.read();
+		while(!sourceFile.isEOF() && c != START_TAG)
+		{
+			nodeValue.append(c);
 			c = (char)sourceFile.read();
 		}
 		
@@ -163,74 +503,33 @@ public abstract class BaseParser
 			sourceFile.unread(1);
 		}
 		
-		while(!sourceFile.isEOF())
-		{
-			c = (char)sourceFile.read();
-			System.out.print((char)c);
-			if(isWhitespace(c))
-			{
-				continue;
-			}
-			
-			sourceFile.unread(1);
-			
-			if(hasXMLDeclaration())
-			{
-				if(shouldExpectXMLDeclaration)
-				{
-					XMLDeclaration xmlDeclaration = readXMLDeclaration();
-					document.setXMLDeclaration(xmlDeclaration);
-					shouldExpectXMLDeclaration = false;
-				}
-				else
-				{
-					throw new Exception("Error : I guess this is xml declaration came at the wrong place...");
-				}
-			}
-			else if(hasComment())
-			{
-				XMLComment xmlComment = readComment();
-			}
-			else if(hasXMLCDATA())
-			{
-				throw new Exception("Error : No budy,,, this CDATA,,, you can't put it here,,, just grab that CDATA and get out...");
-			}
-			else
-			{
-				break;
-			}
-		}
+		return new XMLValue(nodeValue);
 	}
 	
-	private boolean hasXMLDeclaration() throws IOException
+	/**
+	 * Reads the simple declaration.
+	 * 
+	 * @return XMLDeclaration object that has the data regarding the simple declaration...
+	 * @throws Exception 
+	 */
+	private XMLElement readSimpleDeclaration() throws Exception
 	{
-		char c = (char)sourceFile.read();
-		if(c == START_TAG)
+		int spaces = skipSpaces();
+		
+		readExpectedChar('<');
+		readExpectedChar('?');
+		
+		StringBuilder simpleDeclarationData = new StringBuilder();
+		char c1 = (char)sourceFile.read();
+		char c2 = (char)sourceFile.read();
+		while(!sourceFile.isEOF() && c1 != ASCII_SPACE && c2 != END_TAG)
 		{
-			c = (char)sourceFile.read();
-			if(c == QUESTION_MARK)
-			{
-				char x = (char)sourceFile.read();
-				char m = (char)sourceFile.read();
-				char l = (char)sourceFile.read();
-				
-				if(x == this.x && m == this.m && l == this.l)
-				{
-					sourceFile.unread((byte)5);
-					return true;
-				}
-				
-				// unreads the other characters than 'xml'...
-				sourceFile.unread((byte)3);
-			}
-			
-			// unreads the character that is not '?'...
-			sourceFile.unread(1);
+			simpleDeclarationData.append(c1).append(c2);
+			c1 = (char)sourceFile.read();
+			c2 = (char)sourceFile.read();
 		}
 		
-		// unreads the character that is not '<'...
-		sourceFile.unread(1);
-		return false;
+		return new XMLSimpleDeclaration(simpleDeclarationData);
 	}
 
 	/**
@@ -239,7 +538,7 @@ public abstract class BaseParser
 	 * @return XMLDeclaration object that has the data regarding the xml declaration...
 	 * @throws Exception 
 	 */
-	private XMLDeclaration readXMLDeclaration() throws Exception
+	private XMLElement readXMLDeclaration() throws Exception
 	{
 		// reading xml declaration prefix...
 		readExpectedChar('<');
@@ -388,6 +687,11 @@ public abstract class BaseParser
 	
 	private boolean hasStandAlone() throws IOException
 	{
+		if(sourceFile.isEOF() || sourceFile.available() <= 10)
+		{
+			return false;
+		}
+		
 		char c1 = (char)sourceFile.read();
 		char c2 = (char)sourceFile.read();
 		char c3 = (char)sourceFile.read();
@@ -410,6 +714,11 @@ public abstract class BaseParser
 
 	private boolean hasEncoding() throws IOException
 	{
+		if(sourceFile.isEOF() || sourceFile.available() <= 8)
+		{
+			return false;
+		}
+		
 		char c1 = (char)sourceFile.read();
 		char c2 = (char)sourceFile.read();
 		char c3 = (char)sourceFile.read();
@@ -428,17 +737,23 @@ public abstract class BaseParser
 		return false;
 	}
 
-	private XMLNode readRootNode() throws Exception
+	private XMLElement readRootNode() throws Exception
 	{
 		return readNode();
 	}
 	
-	private XMLNode readNode() throws Exception
+	private XMLElement readNode() throws Exception
 	{
+		skipSpaces();
 		readExpectedChar('<');
+		
+		// Reading node name...
 		StringBuilder nodeName = readNodeName();
+		
+		// Creating node object by NodeFactory class...
 		XMLNode node = XMLNodeFactory.createXMLNode(nodeName);
 
+		// Reading node attributes...
 		int attributeIndex = -1;
 		while(hasAttribute())
 		{
@@ -450,53 +765,44 @@ public abstract class BaseParser
 			}
 		}
 		
+		// Check if node is self closing node or not...
 		boolean isSelfClosingNode = checkSelfClosingNode();
 		
 		readExpectedChar('>');
 		
-		XMLValue nodeValue = null;
 		int valueOrNodeIndex = -1;
+		
+		// If node is not self closing node then there must be something inside it,,,
+		// (ex text values, nested nodes, comments, or cdata)...
 		if(!isSelfClosingNode)
 		{
+			int nodeSequentialIndex = 1;
+			XMLElementType elementType = null;
+			XMLElement element = null;
 			while(true)
 			{
-				nodeValue = readNodeValue();
-				if(nodeValue != null)
-				{
-					valueOrNodeIndex++;
-					node.addValueOrNode(valueOrNodeIndex, nodeValue);
-				}
-				
-				if(hasComment())
-				{
-					XMLComment xmlComment = readComment();
-					valueOrNodeIndex++;
-					node.addValueOrNode(valueOrNodeIndex, xmlComment);
-				}
-				else if(hasXMLCDATA())
-				{
-					XMLCData xmlCData = readXMLCDATA();
-					valueOrNodeIndex++;
-					node.addValueOrNode(valueOrNodeIndex, xmlCData);
-				}
-				else if(hasXMLDeclaration())
+				elementType = checkNextElementType();
+				if(elementType == XMLElementType.XMLDeclaration)
 				{
 					throw new Exception("OMG,,, It looks like an XMLDeclaration came at wrong place,,, right???");
 				}
-				else if(hasNestedNodes())
+				
+				element = readElement(elementType);
+				if(element == null)
 				{
-					XMLNode nestedNode = readNestedNode();
-					nestedNode.setParentNode(node);
-					if(nestedNode != null)
-					{
-						valueOrNodeIndex++;
-						node.addValueOrNode(valueOrNodeIndex, nestedNode);
-					}
+					readNodeEnd(nodeName);
+					break;
 				}
 				else
 				{
-					checkNodeEnd(nodeName);
-					break;
+					if(elementType == XMLElementType.XMLNode)
+					{
+						((XMLNode)element).setNodeSequentialIndex(nodeSequentialIndex++);
+						((XMLNode)element).setParentNode(node);
+					}
+					
+					valueOrNodeIndex++;
+					node.addValueOrNode(valueOrNodeIndex, element);
 				}
 			}
 		}
@@ -504,56 +810,10 @@ public abstract class BaseParser
 		
 		return node;
 	}
-	
-	private XMLElementType checkNextElementType() throws IOException, Exception
-	{
-		if(hasComment())
-		{
-			return XMLElementType.XMLComment;
-		}
-		else if(hasXMLCDATA())
-		{
-			return XMLElementType.XML_CDATA;
-		}
-		else if(hasXMLDeclaration())
-		{
-			return XMLElementType.XMLDeclaration;
-		}
-		else if(hasNestedNodes())
-		{
-			return XMLElementType.XMLNode;
-		}
-		else
-		{
-			return XMLElementType.None;
-		}
-	}
 
-	private boolean hasXMLCDATA() throws IOException
+	private XMLElement readXMLCDATA() throws Exception
 	{
 		skipSpaces();
-		char c1 = (char)sourceFile.read();
-		char c2 = (char)sourceFile.read();
-		char c3 = (char)sourceFile.read();
-		char c4 = (char)sourceFile.read();
-		char c5 = (char)sourceFile.read();
-		char c6 = (char)sourceFile.read();
-		char c7 = (char)sourceFile.read();
-		char c8 = (char)sourceFile.read();
-		char c9 = (char)sourceFile.read();
-		
-		sourceFile.unread((byte)9);
-		if(c1 == START_TAG && c2 == EXCLAMATION_MARK && c3 == OPEN_SQUARE_BRACKET && c4 == C && c5 == D && 
-				c6 == A && c7 == T && c8 == A && c9 == OPEN_SQUARE_BRACKET)
-		{
-			return true;
-		}
-		
-		return false;
-	}
-
-	private XMLCData readXMLCDATA() throws IOException
-	{
 		readExpectedChar('<');
 		readExpectedChar('!');
 		readExpectedChar('[');
@@ -566,18 +826,34 @@ public abstract class BaseParser
 		
 		StringBuilder cData = new StringBuilder();
 		char c1 = (char)sourceFile.read();
-		char c2 = (char)sourceFile.read();
-		char c3 = (char)sourceFile.read();
-		while(!sourceFile.isEOF() && c1 != CLOSE_SQUARE_BRACKET && c2 != CLOSE_SQUARE_BRACKET && c3 != END_TAG)
+		char c2;
+		char c3;
+		while(!sourceFile.isEOF())
 		{
-			cData.append((char)c1).append(c2).append(c3);
+			if(c1 == CLOSE_SQUARE_BRACKET)
+			{
+				c2 = (char)sourceFile.read();
+				if(c2 == CLOSE_SQUARE_BRACKET)
+				{
+					c3 = (char)sourceFile.read();
+					if(c3 == END_TAG)
+					{
+						break;
+					}
+					sourceFile.unread(1);
+				}
+				sourceFile.unread(1);
+			}
+			cData.append(c1);
 			c1 = (char)sourceFile.read();
-			c2 = (char)sourceFile.read();
-			c3 = (char)sourceFile.read();
 		}
 		
-		XMLCData CDATA = new XMLCData(cData);
-		return CDATA;
+		if(sourceFile.isEOF())
+		{
+			throw  new Exception("Error : While reading CDATA,,, End Of File encountered...");
+		}
+		
+		return new XMLCData(cData);
 	}
 
 	private boolean hasAttribute() throws Exception
@@ -605,74 +881,20 @@ public abstract class BaseParser
 		sourceFile.unread(1);
 		return true;
 	}
-
-	private XMLNode readNestedNode() throws Exception 
-	{
-		return readNode();
-	}
 	
-	private boolean hasComment() throws Exception
+	private void readNodeEnd(StringBuilder nodeName) throws Exception
 	{
 		skipSpaces();
-		readExpectedChar('<');
-
-		char c1 = (char)sourceFile.read();
-		char c2 = (char)sourceFile.read();
-		char c3 = (char)sourceFile.read();
-		if(c1 == EXCLAMATION_MARK && c2 == DASH && c3 == DASH)
-		{
-			return true;
-		}
-
-		sourceFile.unread((byte)4);
-		return false;
-	}
-	
-	private void checkNodeEnd(StringBuilder nodeName) throws Exception
-	{
 		readExpectedChar('<');
 		readExpectedChar('/');
 		
-		StringBuilder nodeEndName = new StringBuilder();
-		
-		char c = (char)sourceFile.read();
-		System.out.print((char)c);
-		
-		while(!sourceFile.isEOF() && c != END_TAG)
+		int nodeNameLength = nodeName.length();
+		for(int i=0; i<nodeNameLength; i++)
 		{
-			nodeEndName.append((char)c);
-			c = (char)sourceFile.read();
+			readExpectedChar(nodeName.charAt(i));
 		}
 		
-		if(c != END_TAG)
-		{
-			throw new Exception("Node is not ended properly...");
-		}
-		
-		if(!(nodeEndName.toString()).equals(nodeName.toString()))
-		{
-			throw new Exception("Node should be ended with " + nodeName + " but actually ended with " + nodeEndName);
-		}
-	}
-
-	private boolean hasNestedNodes() throws Exception
-	{
-		skipSpaces();
-		readExpectedChar('<');
-		
-		char c = (char)sourceFile.read();
-		System.out.print((char)c);
-		
-		if(c == END_PREFIX)
-		{
-			sourceFile.unread((byte)2);
-			return false;
-		}
-		else
-		{
-			sourceFile.unread((byte)2);
-			return true;
-		}
+		readExpectedChar('>');
 	}
 
 	private boolean checkSelfClosingNode() throws Exception
@@ -688,33 +910,6 @@ public abstract class BaseParser
 		
 		sourceFile.unread(1);
 		return false;
-	}
-
-	private XMLValue readNodeValue() throws Exception
-	{
-		StringBuilder  nodeValue = new StringBuilder();
-		char c = (char)sourceFile.read();
-		System.out.print((char)c);
-		
-		boolean countValue = false;
-		while(!sourceFile.isEOF() && c != START_TAG)
-		{
-			if(!isWhitespace(c))
-			{
-				countValue = true;
-			}
-			nodeValue.append((char)c);
-			c = (char)sourceFile.read();
-			System.out.print((char)c);
-		}
-		
-		sourceFile.unread(1);
-		
-		if(nodeValue.length() != 0 && countValue)
-		{
-			return new XMLValue(nodeValue);
-		}
-		return null;
 	}
 	
 	private XMLAttribute readXMLAttribute() throws Exception
@@ -820,49 +1015,60 @@ public abstract class BaseParser
 		return nodeName;
 	}
 
-	private XMLComment readComment() throws Exception
+	private XMLElement readComment() throws Exception
 	{
-		char c = (char)sourceFile.read();
-		System.out.print((char)c);
+		skipSpaces();
+		readExpectedChar('<');
+		readExpectedChar('!');
+		readExpectedChar('-');
+		readExpectedChar('-');
 		
 		StringBuilder comment = new StringBuilder();
+		
+		char c = (char) sourceFile.read();
+		
 		while(!sourceFile.isEOF())
 		{
 			if(c == DASH)
 			{
-				c = (char)sourceFile.read();
-				System.out.print((char)c);
-				if(c == DASH)
+				if(sourceFile.peek() == DASH)
 				{
-					c = (char)sourceFile.read();
-					System.out.print((char)c);
-					if(c == END_TAG)
-					{
-						// Comment reading over...
-						break;
-					}
-					else
-					{
-						// Got -- ... and it's error...
-						throw new Exception("This comment contains illegel series of characters and that is this \"--\"...");
-					}
-				}
-				else
-				{
-					comment.append(c);
+					readExpectedChar('-');
+					readExpectedChar('>');
+					break;
 				}
 			}
-			else
-			{
-				comment.append(c);
-			}
-			
-			c = (char)sourceFile.read();
-			System.out.print((char)c);
+			comment.append(c);
+			c = (char) sourceFile.read();
 		}
 		
-		XMLComment xmlComment = new XMLComment(comment);
-		return xmlComment;
+		return new XMLComment(comment);
+	}
+	
+	private XMLElement readDOCTYPE() throws IOException
+	{
+		skipSpaces();
+		
+		readExpectedChar('<');
+		readExpectedChar('!');
+		readExpectedChar('D');
+		readExpectedChar('O');
+		readExpectedChar('C');
+		readExpectedChar('T');
+		readExpectedChar('Y');
+		readExpectedChar('P');
+		readExpectedChar('E');
+		
+		StringBuilder docTypeString = new StringBuilder();
+		
+		char c = (char)sourceFile.read();
+		while(!sourceFile.isEOF() && c != END_TAG)
+		{
+			docTypeString.append(c);
+			c = (char)sourceFile.read();
+		}
+		
+		return new DOCTYPE(docTypeString);
 	}
 	
 	/**
@@ -885,18 +1091,26 @@ public abstract class BaseParser
      * reads the spaces and skip it...
      * @throws IOException 
      */
-    protected void skipSpaces() throws IOException
+    protected int skipSpaces() throws IOException
     {
+    	int spaces = 0;
     	int c = sourceFile.read();
         while( isWhitespace(c))
         {
+        	spaces++;
     		c = sourceFile.read();
         }
 
         if (c != -1)
         {
+//        	if(spaces > 0) 
+//        	{ 
+//        		spaces--;
+//        	}
             sourceFile.unread(1);
         }
+        
+        return spaces;
     }
     
     /**
@@ -910,183 +1124,4 @@ public abstract class BaseParser
         return c == 0 || c == 9 || c == 12  || c == ASCII_LF
         || c == ASCII_CR || c == ASCII_SPACE;
     }
-
-	/*
-	 * This was basic parsing...
-	 * Not used anymore...
-	 */
-//	public void parse() throws Exception
-//	{
-//		StringBuilder text = new StringBuilder();
-//		
-//		StringBuilder nodeName = new StringBuilder();
-//		StringBuilder nodeValue = new StringBuilder();
-//		StringBuilder attributeKey = new StringBuilder();
-//		StringBuilder attributeValue = new StringBuilder();
-//		
-//		int attributeIndex = 0;
-//		int tagIndex = 0;
-//		int keyValueStartIndicator = 0;
-//		
-//		int c;
-//		while ((c = fileReader.read()) != -1)
-//		{
-//			if(c == START_TAG)
-//			{
-//				if(!isAttributeValueInProgress)
-//				{
-//					shouldExpectedStartTag = false;
-//					shouldExpectNodeName = true;
-//					if(text.length() > 0)
-//					{
-//						nodeValue = text;
-//						text = new StringBuilder();
-//						tagStack.peek().setNodeValue(nodeValue);
-//					}
-//				}
-//				else
-//				{
-//					/*
-//					 * <name id= " dasdas < dsadsa "> "<" will be invalid character in attribute value...
-//					 */
-//					throw new Exception("Error : Invalid character "+ c +" present in attribtue value...");
-//				}
-//				continue;
-//			}
-//			
-//			if(c == QUOTATION_MARK || c == APOSTROPHE)
-//			{
-//				/*
-//				 * Check for the apostrophe or quotation mark character.
-//				 * <name id = " ">, <name id = ' '> correct...
-//				 * <name id = " '>, <name id = ' "> incorrect...
-//				 */
-//				if(keyValueStartIndicator == 0)
-//				{
-//					keyValueStartIndicator = c;
-//				}
-//				else if(keyValueStartIndicator != c)
-//				{
-//					throw new Exception("Error : Invalid character... Expected \" " + keyValueStartIndicator + " \" but got \" " + c + " \"");
-//				}
-//				
-//				if(shouldExpectAttributeValue)
-//				{
-//					shouldExpectAttributeKey = true;
-//					if(text.length() > 0)
-//					{
-//						attributeValue = text;
-//						tagStack.peek().addAttribute(attributeIndex++, new XMLAttribute(attributeKey, attributeValue));
-//					}
-//				}
-//				text = new StringBuilder();
-//				isAttributeValueInProgress = !isAttributeValueInProgress;
-//				shouldExpectAttributeValue = !shouldExpectAttributeValue;
-//				continue;
-//			}
-//			
-//			if(c == EQUAL && !isAttributeValueInProgress)
-//			{
-//				if(shouldExpectAttributeKey)
-//				{
-//					shouldExpectAttributeKey = false;
-//					if(text.length() > 0)
-//					{
-//						attributeKey = new StringBuilder(text.toString().trim());
-//						text = new StringBuilder();
-//					}
-//				}
-//				continue;
-//			}
-//			
-//			if(c == SPACE && !isAttributeValueInProgress)
-//			{
-//				if(shouldExpectNodeName)
-//				{
-//					shouldExpectNodeName = false;
-//					shouldExpectAttributeKey = true;
-//					if(text.length() > 0)
-//					{
-//						nodeName = text;
-//						text = new StringBuilder();
-//						XMLNode tag = XMLNodeFactory.createXMLNode(nodeName);
-//						tagStack.push(tag);
-//						tagIndexStack.push(tagIndex);
-//						
-//						attributeIndex = 0;
-//					}
-//					continue;
-//				}
-//			}
-//			
-//			if(c == END_PREFIX && !isAttributeValueInProgress)
-//			{
-//				shouldExpectTagEnd = true;
-//				shouldExpectNodeName = false;
-//				continue;
-//			}
-//			
-//			if(c == END_TAG)
-//			{
-//				if(shouldExpectTagEnd)
-//				{
-//					shouldExpectTagEnd = false;
-//					shouldExpectedStartTag = true;
-//					if(text.length() == 0)
-//					{
-//						tagStack.peek().setSelfClosingNodeFlag(true);
-//					}
-//					else if(text.toString().endsWith((tagStack.peek().getNodeName().toString())))
-//					{
-//					}
-//					else
-//					{
-//						System.out.println("Error Occured while parsing...");
-//						text = new StringBuilder();
-//						return;
-//					}
-//					
-//					XMLNode popedTag = tagStack.pop();
-//					tagIndexStack.pop();
-//					if(tagStack.empty())
-//					{
-//						boolean isMoreThanOneRootNode = !document.setRootNode(popedTag);
-//						if(isMoreThanOneRootNode)
-//						{
-//							throw new Exception("Error : xml file contains more than one root node...");
-//						}
-//					}
-//					else
-//					{
-//						Integer tIndex = tagIndexStack.pop();
-//						tagStack.peek().addNestedNode(tIndex++, popedTag);
-//
-//						tagIndexStack.push(tIndex);
-//					}
-//					text = new StringBuilder();
-//				}
-//				else
-//				{
-//					if(shouldExpectNodeName)
-//					{
-//						shouldExpectNodeName = false;
-//						if(text.length() > 0)
-//						{
-//							nodeName = text;
-//							text = new StringBuilder();
-//							XMLNode tag = XMLNodeFactory.createXMLNode(nodeName);
-//							tagStack.push(tag);
-//							tagIndexStack.push(tagIndex);
-//						}
-//					}
-//				}
-//				continue;
-//			}
-//			
-//			if(!shouldExpectedStartTag)
-//			{
-//				text.append((char)c);
-//			}
-//		}
-//	}
 }

@@ -88,4 +88,12 @@ public interface ContinuousSource extends Closeable
 	 * @throws IOException
 	 */
 	boolean isEOF() throws IOException;
+	
+	/**
+     * Returns an estimate of the number of bytes that can be read.
+     *
+     * @return the number of bytes that can be read
+     * @throws IOException if this random access has been closed
+     */
+    int available() throws IOException;
 }

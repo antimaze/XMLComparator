@@ -21,6 +21,9 @@ public class XMLNode extends XMLElement
 	private boolean hasNestedNodes;
 	private int nestedNodesCount;
 	
+	private int nodeSequentialIndex;
+	private StringBuilder nodePath = null;
+	
 	// take care when passing the parameters...
 	// Maps must not be null...
 	public XMLNode(StringBuilder nodeName, int uniqueId)
@@ -301,6 +304,48 @@ public class XMLNode extends XMLElement
 	public XMLNode getParentNode()
 	{
 		return this.parentNode;
+	}
+	
+	public void setNodeSequentialIndex(int index)
+	{
+		this.nodeSequentialIndex = index;
+	}
+	
+	public int getNodeSequentialNode()
+	{
+		return this.nodeSequentialIndex;
+	}
+	
+	public void setNodePath(StringBuilder nodePath)
+	{
+		this.nodePath = nodePath;
+	}
+	
+	public StringBuilder getNodePath()
+	{
+		if(nodePath != null)
+		{
+			return nodePath;	
+		}
+		else
+		{
+			nodePath = new StringBuilder();
+			List<StringBuilder> nodeNames = new ArrayList<StringBuilder>();
+			nodeNames.add(0, nodeName);
+			
+			XMLNode parent = parentNode;
+			while(parent != null)
+			{
+				nodeNames.add(0, parent.getNodeName());
+				parent = parent.getParentNode();
+			}
+			
+			for(StringBuilder nodeName : nodeNames)
+			{
+				nodePath = nodePath.append("/").append(nodeName);
+			}
+			return nodePath;
+		}
 	}
 
 	@Override

@@ -66,4 +66,9 @@ public final class RandomAccessSource implements ContinuousSource
 		return reader.isEOF();
 	}
 
+	public int available() throws IOException 
+	{
+		return reader.available();
+	}
+
 }

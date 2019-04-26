@@ -22,9 +22,14 @@ enum ATTRIBUTE_DIFF_TYPE
 public class XMLAttributeDifference implements IDiff
 {
 	/**
-	 * This is the attribute in which difference is found...
+	 * This is the attribute of sourceNode with target attribute is compared...
 	 */
-	private XMLAttribute attribute;
+	private XMLAttribute sourceAttribute;
+	
+	/**
+	 * This is the attribute of target in which difference is found...
+	 */
+	private XMLAttribute targetAttribute;
 	
 	/**
 	 * source node contains the ideal attribute...
@@ -41,11 +46,13 @@ public class XMLAttributeDifference implements IDiff
 	 */
 	private ATTRIBUTE_DIFF_TYPE diffType;
 	
-	public XMLAttributeDifference(XMLNode sourceNode, XMLNode targetNode, XMLAttribute attribute, ATTRIBUTE_DIFF_TYPE diffType) 
+	public XMLAttributeDifference(XMLNode sourceNode, XMLNode targetNode, XMLAttribute sourceAttribute,
+								  XMLAttribute targetAttribute, ATTRIBUTE_DIFF_TYPE diffType) 
 	{
 		this.sourceNode = sourceNode;
 		this.targetNode = targetNode;
-		this.attribute = attribute;
+		this.sourceAttribute = sourceAttribute;
+		this.targetAttribute = targetAttribute;
 		this.diffType = diffType;
 	}
 	
@@ -64,9 +71,14 @@ public class XMLAttributeDifference implements IDiff
 		return this.diffType;
 	}
 	
-	public XMLAttribute getAttribute()
+	public XMLAttribute getSourceAttribute()
 	{
-		return this.attribute;
+		return this.sourceAttribute;
+	}
+	
+	public XMLAttribute getTargetAttribute()
+	{
+		return this.targetAttribute;
 	}
 
 	/**
