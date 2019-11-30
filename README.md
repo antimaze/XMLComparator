@@ -1,5 +1,5 @@
 # XMLComparator
-It can parse two xml files(Source and Target) and compare target xml file with source xml file. It will write difference in output file mentioned in the input parameteres passed to rund the jar file.
+It can parse two xml files(Source and Target) and compare target xml file with source xml file. It will write differences in the output file mentioned as a parameter passed to run the jar file.
 
 1. Get a pull
 2. Run mvn clean install command (it will generate the "xmlcomparator-0.0.1-SNAPSHOT.jar" in target folder)
